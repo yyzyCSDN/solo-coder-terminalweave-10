@@ -1,8 +1,10 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from terminalweave.core.clock import ensure_utc
 from terminalweave.core.errors import ValidationError
+
+_NO_CHANGE = object()
 
 @dataclass(frozen=True)
 class DwellRecord:
@@ -17,6 +19,27 @@ class DwellRecord:
             object.__setattr__(self, 'loaded_at', ensure_utc(self.loaded_at))
             if self.loaded_at < self.discharged_at:
                 raise ValidationError('load time precedes discharge')
+
+    def reschedule(
+        self,
+        discharged_at: datetime | None = None,
+        loaded_at: datetime | None | object = _NO_CHANGE,
+    ) -> 'DwellRecord':
+        """Return a copy anchored to the new vessel call times.
+
+        Passing ``loaded_at=None`` explicitly clears the load anchor (a
+        not-yet-rebooked container); the default leaves it untouched.
+        """
+        new_discharged = ensure_utc(discharged_at) if discharged_at is not None else self.discharged_at
+        if loaded_at is _NO_CHANGE:
+            new_loaded = self.loaded_at
+        elif loaded_at is None:
+            new_loaded = None
+        else:
+            new_loaded = ensure_utc(loaded_at)
+            if new_loaded < new_discharged:
+                raise ValidationError('load time precedes discharge')
+        return replace(self, discharged_at=new_discharged, loaded_at=new_loaded)
 
 class DwellAnalyzer:
 
